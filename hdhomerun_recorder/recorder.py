@@ -7,7 +7,7 @@ import logging
 import heapq
 
 def main():
-    from apscheduler.scheduler import Scheduler
+    from apscheduler.schedulers.background import BackgroundScheduler
 
     if len(sys.argv) != 2:
         sys.exit("usage: %s <config-file>" % sys.argv[0])
@@ -27,7 +27,7 @@ def main():
     logfile = config.get("global", "logfile")
     FORMAT = "%(asctime)-15s: %(message)s"
     logging.basicConfig(level=logging.INFO, filename=logfile, filemode='w',
-                        format=FORMAT)
+            format=FORMAT)
 
     # Set time on WDLXTV systems
     rdate = "/usr/sbin/rdate"
@@ -36,7 +36,7 @@ def main():
         subprocess.Popen(cmd).wait()
 
     logging.info("Main process PID: %d, use this for sending SIGHUP "
-                 "for re-reading the schedule-file", os.getpid())
+            "for re-reading the schedule-file", os.getpid())
 
     global tuners
     tuners = TUNERS(config.get("global", "tuners"))
@@ -55,7 +55,7 @@ def main():
         global reload_jobs, shutdown
         reload_jobs = False
         shutdown = False
-        sched = Scheduler(misfire_grace_time=60, daemonic=False)
+        sched = BackgroundScheduler(daemon=False)
         sched.start()
         signal.signal(signal.SIGHUP, sighup_handler)
         signal.signal(signal.SIGTERM, sigterm_handler)
@@ -100,14 +100,18 @@ def schedule_jobs(sched, schedule_file, channelmap, media_dir):
         job = JOB(media_dir, prog_name, start, period, channel, subchannel)
 
         if repeat:
-            sched.add_cron_job(job.record, hour=start.hour,
-                               minute=start.minute, second=0,
-                               day_of_week=days, name=job.prog_name)
+            sched.add_job(func=job.record,
+                    trigger='cron',
+                    hour=start.hour,
+                    minute=start.minute, second=0,
+                    day_of_week=days, name=job.prog_name)
         else:
             # Don't schedule if it can never be run!
             now = datetime.datetime.now()
             if start > now:
-                sched.add_cron_job(job.record, year=start.year,
+                sched.add_job(func=job.record,
+                        trigger='cron',
+                        year=start.year,
                         month=start.month, day=start.day,
                         hour=start.hour, minute=start.minute,
                         second=0, name=job.prog_name)
@@ -169,14 +173,14 @@ class JOB:
         import tempfile
 
         logging.info("Started recording %s on device: (%s, %s, %s:%s)" % (
-                     self.prog_name, device_id, tuner_num,
-                     self.channel, self.subchannel))
+            self.prog_name, device_id, tuner_num,
+            self.channel, self.subchannel))
         now = datetime.datetime.now()
-        date = now.strftime("%Y-%m-%d")
+        date = now.strftime("%Y-%m-%d_%H-%M")
         dirname = os.path.join(self.basedir, self.prog_name)
         if not os.path.exists(dirname):
             os.makedirs(dirname)
-        filename = os.path.join(dirname, "%s.ts" % date)
+        filename = os.path.join(dirname, "%s.mpg" % date)
         cmd = [hdhomerun_config, device_id, "set"]
         cmd.extend(["/tuner%s/channel" % tuner_num, self.channel])
         subprocess.Popen(cmd).wait()
@@ -193,7 +197,7 @@ class JOB:
         # Record from now to the end of the program.
         now = datetime.datetime.now()
         td = (datetime.datetime.combine(now.date(), self.start.time()) +
-              datetime.timedelta(minutes=self.period) - now)
+                datetime.timedelta(minutes=self.period) - now)
         timeleft = td.days * 24 * 60 * 60 + td.seconds
         time.sleep(timeleft)
         os.kill(p.pid, signal.SIGINT)
@@ -204,9 +208,9 @@ class JOB:
         data = f.read()
         f.close()
         logging.info("Ended recording %s on device: (%s, %s, %s:%s), "
-                     "status: %s" % (
-                     self.prog_name, device_id, tuner_num,
-                     self.channel, self.subchannel, data))
+                "status: %s" % (
+                    self.prog_name, device_id, tuner_num,
+                    self.channel, self.subchannel, data))
 
 if __name__ == '__main__':
     main()
