@@ -22,7 +22,7 @@ def main():
     except TypeError: # not python3
         config = ConfigParser()
 
-    config.readfp(open(sys.argv[1]))
+    config.read_file(open(sys.argv[1]))
     global logfile
     logfile = config.get("global", "logfile")
     FORMAT = "%(asctime)-15s: %(message)s"
